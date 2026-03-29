@@ -1,12 +1,16 @@
 package top.niunaijun.blackboxa.view.main
 
+import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.core.content.edit
 import androidx.viewpager2.widget.ViewPager2
 import com.afollestad.materialdialogs.MaterialDialog
@@ -24,7 +28,6 @@ import top.niunaijun.blackboxa.view.fake.FakeManagerActivity
 import top.niunaijun.blackboxa.view.list.ListActivity
 import top.niunaijun.blackboxa.view.setting.SettingActivity
 
-
 class MainActivity : LoadingActivity() {
 
     private val viewBinding: ActivityMainBinding by inflate()
@@ -35,18 +38,33 @@ class MainActivity : LoadingActivity() {
 
     private var currentUser = 0
 
+    private val notificationPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(viewBinding.root)
+        applyToolbarInsets(viewBinding.toolbarLayout.toolbar)
+        applyBottomInsets(viewBinding.dotsIndicator, viewBinding.fab)
+        maybeRequestPostNotifications()
         initToolbar(viewBinding.toolbarLayout.toolbar, R.string.app_name)
         initViewPager()
         initFab()
         initToolbarSubTitle()
     }
 
+    private fun maybeRequestPostNotifications() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
+        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+    }
+
     private fun initToolbarSubTitle() {
         updateUserRemark(0)
-        //hack code
         viewBinding.toolbarLayout.toolbar.getChildAt(1).setOnClickListener {
             MaterialDialog(this).show {
                 title(res = R.string.userRemark)
@@ -66,7 +84,6 @@ class MainActivity : LoadingActivity() {
     }
 
     private fun initViewPager() {
-
         val userList = BlackBoxCore.get().users
         userList.forEach {
             fragmentList.add(AppsFragment.newInstance(it.id))
@@ -79,8 +96,7 @@ class MainActivity : LoadingActivity() {
         mViewPagerAdapter.replaceData(fragmentList)
         viewBinding.viewPager.adapter = mViewPagerAdapter
         viewBinding.dotsIndicator.setViewPager2(viewBinding.viewPager)
-        viewBinding.viewPager.registerOnPageChangeCallback(object :
-            ViewPager2.OnPageChangeCallback() {
+        viewBinding.viewPager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
             override fun onPageSelected(position: Int) {
                 super.onPageSelected(position)
                 currentUser = fragmentList[position].userID
@@ -88,7 +104,6 @@ class MainActivity : LoadingActivity() {
                 showFloatButton(true)
             }
         })
-
     }
 
     private fun initFab() {
@@ -104,11 +119,9 @@ class MainActivity : LoadingActivity() {
         val tranY: Float = Resolution.convertDpToPixel(120F, App.getContext())
         val time = 200L
         if (show) {
-            viewBinding.fab.animate().translationY(0f).alpha(1f).setDuration(time)
-                .start()
+            viewBinding.fab.animate().translationY(0f).alpha(1f).setDuration(time).start()
         } else {
-            viewBinding.fab.animate().translationY(tranY).alpha(0f).setDuration(time)
-                .start()
+            viewBinding.fab.animate().translationY(tranY).alpha(0f).setDuration(time).start()
         }
     }
 
@@ -122,7 +135,6 @@ class MainActivity : LoadingActivity() {
         }
 
         mViewPagerAdapter.notifyDataSetChanged()
-
     }
 
     private fun updateUserRemark(userId: Int) {
@@ -144,7 +156,6 @@ class MainActivity : LoadingActivity() {
                         fragmentList[userId].installApk(source)
                     }
                 }
-
             }
         }
 
@@ -154,7 +165,7 @@ class MainActivity : LoadingActivity() {
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        when (item?.itemId) {
+        when (item.itemId) {
             R.id.main_git -> {
                 val intent =
                     Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/BlackBoxing/BlackBox"))
@@ -166,13 +177,11 @@ class MainActivity : LoadingActivity() {
             }
 
             R.id.main_tg -> {
-                val intent =
-                    Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/blackboxing"))
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/blackboxing"))
                 startActivity(intent)
             }
 
             R.id.fake_location -> {
-///                toast("Still Developing")
                 val intent = Intent(this, FakeManagerActivity::class.java)
                 intent.putExtra("userID", currentUser)
                 startActivity(intent)
@@ -188,5 +197,4 @@ class MainActivity : LoadingActivity() {
             context.startActivity(intent)
         }
     }
-
 }
