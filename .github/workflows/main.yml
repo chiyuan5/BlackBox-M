@@ -1,4 +1,4 @@
-name: Build Android APK (legacy deps fallback)
+name: Build Android APK (fixed legacy deps + stateview repo)
 
 on:
   workflow_dispatch:
@@ -19,7 +19,7 @@ jobs:
     env:
       GRADLE_OPTS: >-
         -Dorg.gradle.daemon=false
-        -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g"
+        -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8"
 
     steps:
       - name: Checkout source
@@ -45,7 +45,9 @@ jobs:
           yes | sdkmanager --licenses > /dev/null || true
           sdkmanager \
             "platform-tools" \
+            "platforms;android-30" \
             "platforms;android-32" \
+            "build-tools;30.0.3" \
             "build-tools;32.0.0" \
             "ndk;23.1.7779620" \
             "cmake;3.18.1"
@@ -54,7 +56,9 @@ jobs:
         run: chmod +x ./gradlew
 
       - name: Prepare legacy AAR dependencies
+        shell: bash
         run: |
+          set -euxo pipefail
           mkdir -p app/libs
 
           curl -fL --retry 3 --retry-all-errors \
@@ -67,38 +71,77 @@ jobs:
 
           ls -lah app/libs
 
-      - name: Patch app/build.gradle for CI
+      - name: Patch Gradle files for CI
         shell: bash
         run: |
+          set -euxo pipefail
+
           python3 - <<'PY'
           from pathlib import Path
+          import re
 
-          p = Path("app/build.gradle")
-          s = p.read_text(encoding="utf-8")
+          root_file = Path("build.gradle")
+          app_file = Path("app/build.gradle")
 
-          targets = [
+          root = root_file.read_text(encoding="utf-8")
+          scijava = "maven { url 'https://maven.scijava.org/content/repositories/public/' }"
+          jitpack = "maven { url 'https://jitpack.io' }"
+
+          # 1) 给根 build.gradle 的 buildscript / allprojects 一起补 SciJava
+          if "maven.scijava.org/content/repositories/public/" not in root:
+              root = root.replace(jitpack, f"{jitpack}\n        {scijava}")
+          root_file.write_text(root, encoding="utf-8")
+
+          app = app_file.read_text(encoding="utf-8")
+
+          # 2) 确保 app/build.gradle 的 repositories 也有 SciJava
+          repo_block = """repositories {
+              google()
+              mavenCentral()
+              maven { url 'https://jitpack.io' }
+              maven { url 'https://maven.scijava.org/content/repositories/public/' }
+          }"""
+
+          if "maven.scijava.org/content/repositories/public/" not in app:
+              app, replaced = re.subn(
+                  r"repositories\s*\{\s*mavenCentral\(\)\s*\}",
+                  repo_block,
+                  app,
+                  count=1,
+                  flags=re.S,
+              )
+              if replaced == 0:
+                  app = app.replace("dependencies {", repo_block + "\n\ndependencies {", 1)
+
+          # 3) 两个老 AAR 继续走 app/libs，本地兜底
+          for dep in (
               "implementation 'com.roger.catloadinglibrary:catloadinglibrary:1.0.9'",
               "implementation 'com.imuxuan:floatingview:1.6'",
-          ]
+          ):
+              app = app.replace(dep, f"// {dep}  // disabled in CI, resolved from app/libs")
 
-          for t in targets:
-              s = s.replace(t, "// " + t + "  // disabled in CI, resolved from app/libs")
+          app_file.write_text(app, encoding="utf-8")
 
-          p.write_text(s, encoding="utf-8")
-          print("Patched app/build.gradle")
+          print("Patched build.gradle and app/build.gradle")
           PY
 
-          echo "----- app/build.gradle head -----"
-          sed -n '1,30p' app/build.gradle
+          echo "----- root build.gradle (repo grep) -----"
+          grep -nE "jcenter|mavenCentral|google|jitpack|scijava" build.gradle || true
 
-          echo "----- app/build.gradle (grep catloading/floatingview) -----"
-          grep -nE "catloading|floatingview" app/build.gradle || true
+          echo "----- app/build.gradle (repo/deps grep) -----"
+          grep -nE "repositories|stateview|catloading|floatingview|scijava|jitpack" app/build.gradle || true
 
       - name: Build all debug APKs
         shell: bash
         run: |
           set -o pipefail
-          ./gradlew --no-daemon --stacktrace --info --warning-mode all :app:assembleDebug 2>&1 | tee gradle-build.log
+          ./gradlew \
+            --no-daemon \
+            --refresh-dependencies \
+            --stacktrace \
+            --info \
+            --warning-mode all \
+            :app:assembleDebug 2>&1 | tee gradle-build.log
 
       - name: Upload Gradle log on failure
         if: failure()
@@ -111,7 +154,9 @@ jobs:
 
       - name: Collect APKs
         if: success()
+        shell: bash
         run: |
+          set -euxo pipefail
           mkdir -p release-apk
           find app/build/outputs/apk -type f -name "*.apk" -print0 | while IFS= read -r -d '' file; do
             cp "$file" "release-apk/$(basename "$file")"
