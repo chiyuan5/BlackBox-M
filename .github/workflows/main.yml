@@ -1,4 +1,4 @@
-name: Build Android APK (replace dead StateView dep)
+name: Build Android APK (pin StateView to older compatible release)
 
 on:
   workflow_dispatch:
@@ -88,11 +88,11 @@ jobs:
 
           jitpack_repo = "maven { url 'https://jitpack.io' }"
 
-          # 1) root build.gradle：确保 buildscript / allprojects 能访问 jitpack
+          # root build.gradle: ensure jitpack exists in buildscript/allprojects repos
           if "https://jitpack.io" not in root:
               root = re.sub(
                   r"(jcenter\(\)\s*)",
-                  r"\\1        " + jitpack_repo + "\n",
+                  r"\1        " + jitpack_repo + "\n",
                   root,
                   count=1,
               )
@@ -105,7 +105,7 @@ jobs:
 
           root_file.write_text(root, encoding="utf-8")
 
-          # 2) app/build.gradle：把 repositories { mavenCentral() } 补成带 google/jitpack
+          # app/build.gradle: ensure repositories block exists
           repo_block = """repositories {
               google()
               mavenCentral()
@@ -123,16 +123,27 @@ jobs:
               if n == 0:
                   app = app.replace("dependencies {", repo_block + "\n\ndependencies {", 1)
 
-          # 3) stateview：旧坐标已失效，替换为作者 README 当前给的新坐标
-          old_stateview = "implementation 'com.github.nukc.stateview:kotlin:2.2.0'"
-          new_stateview = "implementation 'com.github.nukc:StateView:v3.0.6'"
+          # Replace dead old StateView coord if present
+          app = app.replace(
+              "implementation 'com.github.nukc.stateview:kotlin:2.2.0'",
+              "implementation 'com.github.nukc:StateView:v3.0.2'"
+          )
 
-          if old_stateview in app:
-              app = app.replace(old_stateview, new_stateview)
-          elif new_stateview not in app:
-              app = app.replace("dependencies {", "dependencies {\n    " + new_stateview, 1)
+          # If previous attempt pinned v3.0.6, downgrade it to v3.0.2
+          app = app.replace(
+              "implementation 'com.github.nukc:StateView:v3.0.6'",
+              "implementation 'com.github.nukc:StateView:v3.0.2'"
+          )
 
-          # 4) 两个老库继续走本地 AAR 兜底
+          # If neither exists, inject v3.0.2
+          if "com.github.nukc:StateView:v3.0.2" not in app:
+              app = app.replace(
+                  "dependencies {",
+                  "dependencies {\n    implementation 'com.github.nukc:StateView:v3.0.2'",
+                  1
+              )
+
+          # Disable broken legacy remote deps, use local AAR fallback
           old_cat = "implementation 'com.roger.catloadinglibrary:catloadinglibrary:1.0.9'"
           old_float = "implementation 'com.imuxuan:floatingview:1.6'"
 
@@ -149,7 +160,6 @@ jobs:
               )
 
           app_file.write_text(app, encoding="utf-8")
-
           print("Patched build.gradle and app/build.gradle")
           PY
 
