@@ -15,6 +15,7 @@ jobs:
   build-apk:
     runs-on: ubuntu-latest
     timeout-minutes: 60
+
     env:
       GRADLE_OPTS: >-
         -Dorg.gradle.daemon=false
@@ -42,7 +43,12 @@ jobs:
       - name: Install Android SDK packages
         run: |
           yes | sdkmanager --licenses > /dev/null || true
-          sdkmanager             "platform-tools"             "platforms;android-32"             "build-tools;32.0.0"             "ndk;23.1.7779620"             "cmake;3.18.1"
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-32" \
+            "build-tools;32.0.0" \
+            "ndk;23.1.7779620" \
+            "cmake;3.18.1"
 
       - name: Make gradlew executable
         run: chmod +x ./gradlew
@@ -51,9 +57,13 @@ jobs:
         run: |
           mkdir -p app/libs
 
-          curl -fL --retry 3 --retry-all-errors             -o app/libs/catloadinglibrary-1.0.9.aar             https://artifactory.appodeal.com/appodeal-public/com/roger/catloadinglibrary/catloadinglibrary/1.0.9/catloadinglibrary-1.0.9.aar
+          curl -fL --retry 3 --retry-all-errors \
+            -o app/libs/catloadinglibrary-1.0.9.aar \
+            https://artifactory.appodeal.com/appodeal-public/com/roger/catloadinglibrary/catloadinglibrary/1.0.9/catloadinglibrary-1.0.9.aar
 
-          curl -fL --retry 3 --retry-all-errors             -o app/libs/floatingview-1.6.aar             https://artifactory.appodeal.com/appodeal-public/com/imuxuan/floatingview/1.6/floatingview-1.6.aar
+          curl -fL --retry 3 --retry-all-errors \
+            -o app/libs/floatingview-1.6.aar \
+            https://artifactory.appodeal.com/appodeal-public/com/imuxuan/floatingview/1.6/floatingview-1.6.aar
 
           ls -lah app/libs
 
@@ -65,10 +75,6 @@ jobs:
 
           p = Path("app/build.gradle")
           s = p.read_text(encoding="utf-8")
-
-          repo_block = "repositories {\n    maven { url 'https://maven.scijava.org/content/repositories/public/' }\n}\n\n"
-          if "maven.scijava.org/content/repositories/public/" not in s:
-              s = repo_block + s
 
           targets = [
               "implementation 'com.roger.catloadinglibrary:catloadinglibrary:1.0.9'",
@@ -83,10 +89,10 @@ jobs:
           PY
 
           echo "----- app/build.gradle head -----"
-          sed -n '1,40p' app/build.gradle
+          sed -n '1,30p' app/build.gradle
 
-          echo "----- app/build.gradle (grep catloading/floatingview/stateview/scijava) -----"
-          grep -nE "catloading|floatingview|stateview|scijava" app/build.gradle || true
+          echo "----- app/build.gradle (grep catloading/floatingview) -----"
+          grep -nE "catloading|floatingview" app/build.gradle || true
 
       - name: Build all debug APKs
         shell: bash
