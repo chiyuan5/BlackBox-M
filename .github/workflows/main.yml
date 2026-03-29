@@ -42,54 +42,22 @@ jobs:
       - name: Install Android SDK packages
         run: |
           yes | sdkmanager --licenses > /dev/null || true
-          sdkmanager \
-            "platform-tools" \
-            "platforms;android-32" \
-            "build-tools;32.0.0" \
-            "ndk;23.1.7779620" \
-            "cmake;3.18.1"
+          sdkmanager             "platform-tools"             "platforms;android-32"             "build-tools;32.0.0"             "ndk;23.1.7779620"             "cmake;3.18.1"
 
       - name: Make gradlew executable
         run: chmod +x ./gradlew
-
-      - name: Add legacy repositories for CI
-        shell: bash
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-
-          p = Path("build.gradle")
-          s = p.read_text(encoding="utf-8")
-
-          marker = "maven { url 'https://maven.scijava.org/content/repositories/public/' }"
-          if marker not in s:
-              s = s.replace(
-                  "maven { url 'https://jitpack.io' }",
-                  "maven { url 'https://jitpack.io' }\\n        " + marker
-              )
-
-          p.write_text(s, encoding="utf-8")
-          print("Patched build.gradle with SciJava repository")
-          PY
-
-          echo "----- build.gradle (grep scijava/jitpack) -----"
-          grep -nE "jitpack|scijava" build.gradle || true
 
       - name: Prepare legacy AAR dependencies
         run: |
           mkdir -p app/libs
 
-          curl -fL --retry 3 --retry-all-errors \
-            -o app/libs/catloadinglibrary-1.0.9.aar \
-            https://artifactory.appodeal.com/appodeal-public/com/roger/catloadinglibrary/catloadinglibrary/1.0.9/catloadinglibrary-1.0.9.aar
+          curl -fL --retry 3 --retry-all-errors             -o app/libs/catloadinglibrary-1.0.9.aar             https://artifactory.appodeal.com/appodeal-public/com/roger/catloadinglibrary/catloadinglibrary/1.0.9/catloadinglibrary-1.0.9.aar
 
-          curl -fL --retry 3 --retry-all-errors \
-            -o app/libs/floatingview-1.6.aar \
-            https://artifactory.appodeal.com/appodeal-public/com/imuxuan/floatingview/1.6/floatingview-1.6.aar
+          curl -fL --retry 3 --retry-all-errors             -o app/libs/floatingview-1.6.aar             https://artifactory.appodeal.com/appodeal-public/com/imuxuan/floatingview/1.6/floatingview-1.6.aar
 
           ls -lah app/libs
 
-      - name: Disable broken remote dependencies in app/build.gradle
+      - name: Patch app/build.gradle for CI
         shell: bash
         run: |
           python3 - <<'PY'
@@ -97,6 +65,10 @@ jobs:
 
           p = Path("app/build.gradle")
           s = p.read_text(encoding="utf-8")
+
+          repo_block = "repositories {\n    maven { url 'https://maven.scijava.org/content/repositories/public/' }\n}\n\n"
+          if "maven.scijava.org/content/repositories/public/" not in s:
+              s = repo_block + s
 
           targets = [
               "implementation 'com.roger.catloadinglibrary:catloadinglibrary:1.0.9'",
@@ -110,8 +82,11 @@ jobs:
           print("Patched app/build.gradle")
           PY
 
-          echo "----- app/build.gradle (grep catloading/floatingview/stateview) -----"
-          grep -nE "catloading|floatingview|stateview" app/build.gradle || true
+          echo "----- app/build.gradle head -----"
+          sed -n '1,40p' app/build.gradle
+
+          echo "----- app/build.gradle (grep catloading/floatingview/stateview/scijava) -----"
+          grep -nE "catloading|floatingview|stateview|scijava" app/build.gradle || true
 
       - name: Build all debug APKs
         shell: bash
