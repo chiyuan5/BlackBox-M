@@ -61,15 +61,19 @@ jobs:
           p = Path("build.gradle")
           s = p.read_text(encoding="utf-8")
 
-          repo_line = "maven { url 'https://maven.scijava.org/content/repositories/public/' }"
-          if repo_line not in s:
-              s = s.replace("maven { url 'https://jitpack.io' }",
-                            "maven { url 'https://jitpack.io' }\\n        " + repo_line)
+          marker = "maven { url 'https://maven.scijava.org/content/repositories/public/' }"
+          if marker not in s:
+              s = s.replace(
+                  "maven { url 'https://jitpack.io' }",
+                  "maven { url 'https://jitpack.io' }\\n        " + marker
+              )
+
           p.write_text(s, encoding="utf-8")
           print("Patched build.gradle with SciJava repository")
           PY
 
-          sed -n '1,120p' build.gradle
+          echo "----- build.gradle (grep scijava/jitpack) -----"
+          grep -nE "jitpack|scijava" build.gradle || true
 
       - name: Prepare legacy AAR dependencies
         run: |
@@ -106,12 +110,26 @@ jobs:
           print("Patched app/build.gradle")
           PY
 
-          sed -n '1,240p' app/build.gradle
+          echo "----- app/build.gradle (grep catloading/floatingview/stateview) -----"
+          grep -nE "catloading|floatingview|stateview" app/build.gradle || true
 
       - name: Build all debug APKs
-        run: ./gradlew --no-daemon --stacktrace :app:assembleDebug
+        shell: bash
+        run: |
+          set -o pipefail
+          ./gradlew --no-daemon --stacktrace --info --warning-mode all :app:assembleDebug 2>&1 | tee gradle-build.log
+
+      - name: Upload Gradle log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gradle-build-log
+          path: gradle-build.log
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: Collect APKs
+        if: success()
         run: |
           mkdir -p release-apk
           find app/build/outputs/apk -type f -name "*.apk" -print0 | while IFS= read -r -d '' file; do
@@ -120,6 +138,7 @@ jobs:
           ls -lah release-apk
 
       - name: Upload APK artifacts
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: BlackBox-M-debug-apks
