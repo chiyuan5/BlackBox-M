@@ -1,87 +1,76 @@
 package top.niunaijun.blackbox.core.system;
 
+import android.app.Notification;
+import android.app.NotificationChannel;
 import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
+import android.os.Build;
 import android.os.IBinder;
-import android.util.Log;
 
 import androidx.core.app.NotificationCompat;
 
-import top.niunaijun.blackbox.BlackBoxCore;
+import top.niunaijun.blackbox.R;
+import top.niunaijun.blackbox.app.LauncherActivity;
 import top.niunaijun.blackbox.utils.compat.BuildCompat;
 
-
-/**
- * Created by Milk on 3/2/21.
- * * ∧＿∧
- * (`･ω･∥
- * 丶　つ０
- * しーＪ
- * 此处无Bug
- */
 public class DaemonService extends Service {
-    public static final String TAG = "DaemonService";
-    private static final int NOTIFY_ID = BlackBoxCore.getHostPkg().hashCode();
+
+    public static final int NOTIFY_ID = 10001;
+    private static final String CHANNEL_ID = "blackbox_core";
+    private static final String CHANNEL_NAME = "BlackBox Core";
+
+    @Override
+    public int onStartCommand(Intent intent, int flags, int startId) {
+        if (BuildCompat.isOreo()) {
+            startAsForegroundService();
+        }
+        return START_STICKY;
+    }
 
     @Override
     public IBinder onBind(Intent intent) {
         return null;
     }
 
-    @Override
-    public void onCreate() {
-        super.onCreate();
-    }
-
-    @Override
-    public int onStartCommand(Intent intent, int flags, int startId) {
-        Intent innerIntent = new Intent(this, DaemonInnerService.class);
-        startService(innerIntent);
-        if (BuildCompat.isOreo()) {
-            showNotification();
-        }
-        return START_STICKY;
-    }
-
-    @Override
-    public void onDestroy() {
-        super.onDestroy();
-        Log.d(TAG, "onDestroy");
-    }
-
-    private void showNotification() {
-        NotificationCompat.Builder builder = new NotificationCompat.Builder(getApplicationContext(), getPackageName() + ".blackbox_core")
-                .setPriority(NotificationCompat.PRIORITY_MAX);
-        startForeground(NOTIFY_ID, builder.build());
-    }
-
-    public static class DaemonInnerService extends Service {
-        @Override
-        public void onCreate() {
-            Log.i(TAG, "DaemonInnerService -> onCreate");
-            super.onCreate();
+    private void startAsForegroundService() {
+        NotificationManager notificationManager =
+                (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+        if (notificationManager == null) {
+            return;
         }
 
-        @Override
-        public int onStartCommand(Intent intent, int flags, int startId) {
-            Log.i(TAG, "DaemonInnerService -> onStartCommand");
-            NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
-            nm.cancel(NOTIFY_ID);
-            stopSelf();
-            return super.onStartCommand(intent, flags, startId);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel channel = new NotificationChannel(
+                    CHANNEL_ID,
+                    CHANNEL_NAME,
+                    NotificationManager.IMPORTANCE_LOW
+            );
+            channel.setShowBadge(false);
+            notificationManager.createNotificationChannel(channel);
         }
 
-        @Override
-        public IBinder onBind(Intent intent) {
-            return null;
-        }
+        Intent launchIntent = new Intent(this, LauncherActivity.class);
+        launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        PendingIntent pendingIntent = PendingIntent.getActivity(
+                this,
+                0,
+                launchIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+        );
 
-        @Override
-        public void onDestroy() {
-            Log.i(TAG, "DaemonInnerService -> onDestroy");
-            super.onDestroy();
-        }
+        Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
+                .setSmallIcon(android.R.drawable.stat_notify_sync_noanim)
+                .setContentTitle(getString(R.string.black_box_service_name))
+                .setContentText("BlackBox core service is running")
+                .setOngoing(true)
+                .setCategory(NotificationCompat.CATEGORY_SERVICE)
+                .setPriority(NotificationCompat.PRIORITY_LOW)
+                .setContentIntent(pendingIntent)
+                .build();
+
+        startForeground(NOTIFY_ID, notification);
     }
 }
