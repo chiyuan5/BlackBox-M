@@ -52,6 +52,25 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
+      - name: Add legacy repositories for CI
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path("build.gradle")
+          s = p.read_text(encoding="utf-8")
+
+          repo_line = "maven { url 'https://maven.scijava.org/content/repositories/public/' }"
+          if repo_line not in s:
+              s = s.replace("maven { url 'https://jitpack.io' }",
+                            "maven { url 'https://jitpack.io' }\\n        " + repo_line)
+          p.write_text(s, encoding="utf-8")
+          print("Patched build.gradle with SciJava repository")
+          PY
+
+          sed -n '1,120p' build.gradle
+
       - name: Prepare legacy AAR dependencies
         run: |
           mkdir -p app/libs
@@ -63,10 +82,6 @@ jobs:
           curl -fL --retry 3 --retry-all-errors \
             -o app/libs/floatingview-1.6.aar \
             https://artifactory.appodeal.com/appodeal-public/com/imuxuan/floatingview/1.6/floatingview-1.6.aar
-
-          curl -fL --retry 3 --retry-all-errors \
-            -o app/libs/stateview-kotlin-2.2.0.aar \
-            https://maven.scijava.org/content/repositories/public/com/github/nukc/stateview/kotlin/2.2.0/kotlin-2.2.0.aar
 
           ls -lah app/libs
 
@@ -80,7 +95,6 @@ jobs:
           s = p.read_text(encoding="utf-8")
 
           targets = [
-              "implementation 'com.github.nukc.stateview:kotlin:2.2.0'",
               "implementation 'com.roger.catloadinglibrary:catloadinglibrary:1.0.9'",
               "implementation 'com.imuxuan:floatingview:1.6'",
           ]
@@ -92,7 +106,7 @@ jobs:
           print("Patched app/build.gradle")
           PY
 
-          sed -n '1,220p' app/build.gradle
+          sed -n '1,240p' app/build.gradle
 
       - name: Build all debug APKs
         run: ./gradlew --no-daemon --stacktrace :app:assembleDebug
